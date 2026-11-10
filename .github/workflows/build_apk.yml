@@ -25,23 +25,45 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Reconstruct Android Environment (v2 embedding)
+      - name: Reconstruct Android Environment (v2 embedding & desugaring)
         run: |
-          # حفظ الملفات المخصصة مؤقتاً
+          # حفظ الملفات المخصصة
           cp android/app/src/main/AndroidManifest.xml /tmp/AndroidManifest.xml
           cp -r android/app/src/main/kotlin /tmp/kotlin || true
 
-          # حذف مجلد أندرويد الناقص وإعادة بنائه كاملاً بالمعايير الحديثة
+          # إعادة توليد بنية أندرويد الحديثة
           rm -rf android
           flutter create . --platforms=android --org com.example.silent_chat_simulator
 
-          # استعادة الإعدادات المخصصة (الصلاحيات وقفل الحماية)
+          # استعادة الإعدادات المخصصة
           cp /tmp/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
           cp -r /tmp/kotlin/* android/app/src/main/kotlin/ || true
 
-          # ضبط الحد الأدنى لنظام أندرويد ليتوافق مع البصمة والإشعارات
-          sed -i 's/minSdkVersion .*/minSdkVersion 23/g' android/app/build.gradle || true
-          sed -i 's/minSdk = .*/minSdk = 23/g' android/app/build.gradle || true
+          # ضبط minSdk وتفعيل Desugaring لحزمة الإشعارات تلقائياً
+          python3 -c "
+          import glob, re
+
+          for f in glob.glob('android/app/build.gradle*'):
+              with open(f, 'r') as fp:
+                  c = fp.read()
+              
+              c = re.sub(r'minSdkVersion\s+.*', 'minSdkVersion 23', c)
+              c = re.sub(r'minSdk\s*=.*', 'minSdk = 23', c)
+              
+              if f.endswith('.kts'):
+                  if 'isCoreLibraryDesugaringEnabled' not in c:
+                      c = c.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true')
+                  if 'desugar_jdk_libs' not in c:
+                      c += '\ndependencies {\n    add(\"coreLibraryDesugaring\", \"com.android.tools:desugar_jdk_libs:2.0.4\")\n}\n'
+              else:
+                  if 'coreLibraryDesugaringEnabled' not in c:
+                      c = c.replace('compileOptions {', 'compileOptions {\n        coreLibraryDesugaringEnabled true')
+                  if 'desugar_jdk_libs' not in c:
+                      c += '\ndependencies {\n    coreLibraryDesugaring \"com.android.tools:desugar_jdk_libs:2.0.4\"\n}\n'
+              
+              with open(f, 'w') as fp:
+                  fp.write(c)
+          "
 
       - name: Install Dependencies
         run: flutter pub get
