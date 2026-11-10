@@ -25,10 +25,28 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Reconstruct Android Environment (v2 embedding)
+        run: |
+          # حفظ الملفات المخصصة مؤقتاً
+          cp android/app/src/main/AndroidManifest.xml /tmp/AndroidManifest.xml
+          cp -r android/app/src/main/kotlin /tmp/kotlin || true
+
+          # حذف مجلد أندرويد الناقص وإعادة بنائه كاملاً بالمعايير الحديثة
+          rm -rf android
+          flutter create . --platforms=android --org com.example.silent_chat_simulator
+
+          # استعادة الإعدادات المخصصة (الصلاحيات وقفل الحماية)
+          cp /tmp/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          cp -r /tmp/kotlin/* android/app/src/main/kotlin/ || true
+
+          # ضبط الحد الأدنى لنظام أندرويد ليتوافق مع البصمة والإشعارات
+          sed -i 's/minSdkVersion .*/minSdkVersion 23/g' android/app/build.gradle || true
+          sed -i 's/minSdk = .*/minSdk = 23/g' android/app/build.gradle || true
+
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build APK (Fat / Universal Release)
+      - name: Build APK (Release)
         run: flutter build apk --release
 
       - name: Upload APK Artifact
